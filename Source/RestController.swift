@@ -157,6 +157,58 @@ public class RestController : NSObject, URLSessionDelegate {
             callback(.success(returnedData), httpResponse)
         }.resume()
     }
+    
+    private func dataTask(relativePath: String?, httpMethod: String, accept: String, data: Data?, options: RestOptions, callback: @escaping (Result<Data>, HTTPURLResponse?) -> ()) throws {
+        let restURL: URL;
+        if let relativeURL = relativePath {
+            restURL = url.appendingPathComponent(relativeURL)
+        } else {
+            restURL = url
+        }
+        
+        var request = URLRequest(url: restURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: options.requestTimeoutSeconds)
+        request.httpMethod = httpMethod
+        
+        request.setValue(accept, forHTTPHeaderField: RestController.kAcceptKey)
+        if let customHeaders = options.httpHeaders {
+            for (httpHeaderKey, httpHeaderValue) in customHeaders {
+                request.setValue(httpHeaderValue, forHTTPHeaderField: httpHeaderKey)
+            }
+        }
+        
+        if let dataObj = data {
+            request.setValue(RestController.kJsonType, forHTTPHeaderField: RestController.kContentType)
+            request.httpBody = dataObj
+        }
+        
+        UIApplication.shared.isNetworkActivityIndicatorVisible = true
+        
+        session.dataTask(with: request) { (data, response, error) -> Void in
+            UIApplication.shared.isNetworkActivityIndicatorVisible = false
+            
+            if let err = error {
+                callback(.failure(err), nil)
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                callback(.failure(NetworkingError.badResponse(data)), nil)
+                return
+            }
+            
+            if let expectedStatusCode = options.expectedStatusCode , httpResponse.statusCode != expectedStatusCode {
+                callback(.failure(NetworkingError.unexpectedStatusCode(httpResponse.statusCode, data)), httpResponse)
+                return
+            }
+            
+            guard let returnedData = data else {
+                callback(.failure(NetworkingError.noResponse), httpResponse)
+                return
+            }
+            
+            callback(.success(returnedData), httpResponse)
+            }.resume()
+    }
 
     private func makeCall<T: Deserializer>(_ relativePath: String?, httpMethod: String, json: JSON?, responseDeserializer: T, options: RestOptions, callback: @escaping (Result<T.ResponseType>, HTTPURLResponse?) -> ()) {
         do {
@@ -168,6 +220,26 @@ public class RestController : NSObject, URLSessionDelegate {
                         return
                     }
 
+                    callback(.success(transformedResponse), httpResponse)
+                } catch {
+                    callback(.failure(error), httpResponse)
+                }
+            }
+        } catch {
+            callback(.failure(error), nil)
+        }
+    }
+
+    private func makeCall<T: Deserializer>(_ relativePath: String?, httpMethod: String, data: Data?, responseDeserializer: T, options: RestOptions, callback: @escaping (Result<T.ResponseType>, HTTPURLResponse?) -> ()) {
+        do {
+            try dataTask(relativePath: relativePath, httpMethod: httpMethod, accept: responseDeserializer.acceptHeader, data: data, options: options) { (result, httpResponse) -> () in
+                do {
+                    let data = try result.value()
+                    guard let transformedResponse = responseDeserializer.deserialize(data) else {
+                        callback(.failure(NetworkingError.malformedResponse(data)), httpResponse)
+                        return
+                    }
+                    
                     callback(.success(transformedResponse), httpResponse)
                 } catch {
                     callback(.failure(error), httpResponse)
@@ -249,6 +321,10 @@ public class RestController : NSObject, URLSessionDelegate {
     /// - parameter callback: Called when the network operation has ended, giving back a Boxed `Result<JSON>` and a `NSHTTPURLResponse?` representing the response from the server. Note: The callback is **NOT** called on the main thread.
     public func put(_ json: JSON, at relativePath: String? = nil, options: RestOptions = RestOptions(), callback: @escaping (Result<JSON>, HTTPURLResponse?) -> ()) {
         makeCall(relativePath, httpMethod: RestController.kPutType, json: json, responseDeserializer: JSONDeserializer(), options: options, callback: callback)
+    }
+    
+    public func put(_ data: Data, at relativePath: String? = nil, options: RestOptions = RestOptions(), callback: @escaping (Result<JSON>, HTTPURLResponse?) -> ()) {
+        makeCall(relativePath, httpMethod: RestController.kPutType, data: data, responseDeserializer: JSONDeserializer(), options: options, callback: callback)
     }
 
     /// Performs a DELETE request to the server, capturing the output of the server using the supplied `Deserializer`.
