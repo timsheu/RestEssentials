@@ -128,11 +128,14 @@ public class RestController : NSObject, URLSessionDelegate {
             request.setValue(RestController.kJsonType, forHTTPHeaderField: RestController.kContentType)
             request.httpBody = try jsonObj.makeData()
         }
-
-        UIApplication.shared.isNetworkActivityIndicatorVisible = true
-
+        DispatchQueue.main.async {
+            UIApplication.shared.isNetworkActivityIndicatorVisible = true
+        }
+        
         session.dataTask(with: request) { (data, response, error) -> Void in
-            UIApplication.shared.isNetworkActivityIndicatorVisible = false
+            DispatchQueue.main.async {
+                UIApplication.shared.isNetworkActivityIndicatorVisible = false
+            }
 
             if let err = error {
                 callback(.failure(err), nil)
@@ -180,12 +183,14 @@ public class RestController : NSObject, URLSessionDelegate {
             request.setValue(RestController.kJsonType, forHTTPHeaderField: RestController.kContentType)
             request.httpBody = dataObj
         }
-        
-        UIApplication.shared.isNetworkActivityIndicatorVisible = true
+        DispatchQueue.main.async {
+            UIApplication.shared.isNetworkActivityIndicatorVisible = true
+        }
         
         session.dataTask(with: request) { (data, response, error) -> Void in
-            UIApplication.shared.isNetworkActivityIndicatorVisible = false
-            
+            DispatchQueue.main.async {
+                UIApplication.shared.isNetworkActivityIndicatorVisible = false
+            }
             if let err = error {
                 callback(.failure(err), nil)
                 return
@@ -298,6 +303,11 @@ public class RestController : NSObject, URLSessionDelegate {
         makeCall(relativePath, httpMethod: RestController.kPostType, json: json, responseDeserializer: JSONDeserializer(), options: options, callback: callback)
     }
 
+    public func post(_ data: Data, at relativePath: String? = nil, options: RestOptions = RestOptions(), callback: @escaping (Result<JSON>, HTTPURLResponse?) -> ()) {
+        makeCall(relativePath, httpMethod: RestController.kPostType, data: data, responseDeserializer: JSONDeserializer(), options: options, callback: callback)
+    }
+
+    
     /// Performs a PUT request to the server, capturing the output of the server using the supplied `Deserializer`.
     ///
     /// Note: This is an **asynchronous** call and will return immediately.  The network operation is done in the background.
@@ -309,6 +319,10 @@ public class RestController : NSObject, URLSessionDelegate {
     /// - parameter callback: Called when the network operation has ended, giving back a Boxed `Result<T.ResponseType>` and a `NSHTTPURLResponse?` representing the response from the server. Note: The callback is **NOT** called on the main thread.
     public func put<T: Deserializer>(_ json: JSON, withDeserializer responseDeserializer: T, at relativePath: String? = nil, options: RestOptions = RestOptions(), callback: @escaping (Result<T.ResponseType>, HTTPURLResponse?) -> ()) {
         makeCall(relativePath, httpMethod: RestController.kPutType, json: json, responseDeserializer: responseDeserializer, options: options, callback: callback)
+    }
+    
+    public func put<T: Deserializer>(_ data: Data, withDeserializer responseDeserializer: T, at relativePath: String? = nil, options: RestOptions = RestOptions(), callback: @escaping (Result<T.ResponseType>, HTTPURLResponse?) -> ()) {
+        makeCall(relativePath, httpMethod: RestController.kPutType, data: data, responseDeserializer: responseDeserializer, options: options, callback: callback)
     }
 
     /// Performs a PUT request to the server, capturing the `JSON` response from the server.
